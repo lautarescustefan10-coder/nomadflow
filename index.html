@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NomadFlow | Vietnam Budget Planner</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>NomadFlow</h1>
+            <p>Calculate your freedom in Vietnam 🇻🇳</p>
+        </header>
+
+        <main class="dashboard">
+            <section class="card settings">
+                <h2>Plan Your Escape</h2>
+                
+                <div class="input-group">
+                    <label>Currency</label>
+                    <select id="currencySelect">
+                        <option value="USD">USD - Dollars</option>
+                        <option value="EUR">EUR - Euro</option>
+                        <option value="RON">RON - Romanian Leu</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>Total Savings (Foreign Currency)</label>
+                    <input type="number" id="amountInput" placeholder="e.g. 5000">
+                </div>
+
+                <div class="input-group">
+                    <label>Regional Presets</label>
+                    <div class="preset-tags">
+                        <button type="button" class="preset-tag" data-amount="30000000">🏙️ HCMC Premium</button>
+                        <button type="button" class="preset-tag" data-amount="20000000">🌊 Da Nang</button>
+                        <button type="button" class="preset-tag" data-amount="18000000">🏯 Hanoi</button>
+                        <button type="button" class="preset-tag" data-amount="12000000">🌿 Rural/Hoi An</button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Est. Monthly Spending (VND)</label>
+                    <input type="number" id="monthlyInput" placeholder="e.g. 25,000,000">
+                    <small style="color: #86868b; font-size: 11px;">Enter amount in Vietnamese Dong (millions)</small>
+                </div>
+
+                <button id="convertBtn">Analyze Budget</button>
+                
+                <input type="hidden" id="rateInput"> 
+            </section>
+
+            <section class="card stats">
+                <h2>Nomad Insights</h2>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <span>VND Equivalent</span>
+                        <h3 id="vndResult">0 ₫</h3>
+                    </div>
+                    <div class="stat-item">
+                        <span>Longevity Estimate</span>
+                        <h3 id="longevityResult">---</h3>
+                    </div>
+                </div>
+                
+                <div class="progress-info">
+                    <span>Budget Safety Buffer</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="fill"></div>
+                    </div>
+                </div>
+
+                <div class="info-note">
+                    <small>Based on average expat lifestyle including rent, utilities, and dining out.</small>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Build with 🖤 for the Vietnam Dream</p>
+        </footer>
+    </div>
+</body>
+</html>
