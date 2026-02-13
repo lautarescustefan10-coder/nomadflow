@@ -1,227 +1,368 @@
 // script.js
-// Currency conversion and budget longevity utilities for Vietnam (VND)
-// Provides:
-//  - fetchExchangeRate(fromCurrency) -> number (VND per unit)
-//  - convertToVND(amount, rate)
-//  - calculateLongevity(budgetVND, monthlyExpenseVND)
-//  - formatVND(amount)
-// Also exposes a small UI wiring helper `attachBudgetUI(opts)` that will
-// bind to common element IDs if present (optional).
+// NomadFlow - Multi-Country Nomad Budget Calculator with Lifestyle Toggle
+// Supports: Vietnam, Thailand, Philippines, Indonesia, Japan, South Korea
 
-const BudgetUtils = (function () {
-  // Default base for live rates (uses exchangerate.host)
-  const API_BASE = 'https://api.exchangerate.host/latest';
+// Lifestyle Pricing Matrix (monthly costs in local currency)
+const LIFESTYLE_MATRIX = {
+    VN: { budget: 12000000, standard: 25000000, highlife: 60000000 },
+    TH: { budget: 25000, standard: 50000, highlife: 120000 },
+    PH: { budget: 35000, standard: 60000, highlife: 150000 },
+    ID: { budget: 10000000, standard: 20000000, highlife: 50000000 },
+    JP: { budget: 180000, standard: 350000, highlife: 800000 },
+    KR: { budget: 1500000, standard: 2500000, highlife: 5500000 }
+};
 
-  async function fetchExchangeRate(fromCurrency = 'USD') {
-    // Returns the exchange rate: 1 fromCurrency == X VND
-    try {
-      const url = `${API_BASE}?base=${encodeURIComponent(fromCurrency)}&symbols=VND`;
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error('Network error');
-      const data = await resp.json();
-      if (data && data.rates && typeof data.rates.VND === 'number') {
-        return data.rates.VND;
-      }
-      throw new Error('Invalid response');
-    } catch (err) {
-      // Provide sensible fallback rates (as of a recent snapshot) — you can update these.
-      const fallback = {
-        USD: 24000,
-        EUR: 26000,
-        GBP: 30000,
-        AUD: 16000,
-        CAD: 17000,
-      };
-      return fallback[fromCurrency.toUpperCase()] || 24000;
+// Country configuration with currencies and regional presets
+const COUNTRY_CONFIG = {
+    VN: {
+        name: 'Vietnam',
+        flag: '🇻🇳',
+        currency: 'VND',
+        currencyName: 'Vietnamese Dong',
+        locale: 'vi-VN',
+        presets: [
+            { name: '🏙️ HCMC Premium', amount: 30000000 },
+            { name: '🌊 Da Nang', amount: 20000000 },
+            { name: '🏯 Hanoi', amount: 18000000 },
+            { name: '🌿 Rural/Hoi An', amount: 12000000 }
+        ],
+        fallbackRate: { USD: 24500, EUR: 26500, GBP: 31000, AUD: 16000, CAD: 18000, RON: 5300 }
+    },
+    TH: {
+        name: 'Thailand',
+        flag: '🇹🇭',
+        currency: 'THB',
+        currencyName: 'Thai Baht',
+        locale: 'th-TH',
+        presets: [
+            { name: '🏙️ Bangkok Premium', amount: 80000 },
+            { name: '🌸 Chiang Mai', amount: 45000 },
+            { name: '🏝️ Phuket', amount: 70000 },
+            { name: '🌴 Pai/Rural', amount: 30000 }
+        ],
+        fallbackRate: { USD: 35, EUR: 38, GBP: 44, AUD: 23, CAD: 26, RON: 7.5 }
+    },
+    PH: {
+        name: 'Philippines',
+        flag: '🇵🇭',
+        currency: 'PHP',
+        currencyName: 'Philippine Peso',
+        locale: 'en-PH',
+        presets: [
+            { name: '🏙️ Manila/Makati', amount: 80000 },
+            { name: '🏝️ Cebu', amount: 55000 },
+            { name: '🏄 Siargao', amount: 45000 },
+            { name: '🌿 Provincial', amount: 35000 }
+        ],
+        fallbackRate: { USD: 56, EUR: 61, GBP: 71, AUD: 37, CAD: 41, RON: 12 }
+    },
+    ID: {
+        name: 'Indonesia',
+        flag: '🇮🇩',
+        currency: 'IDR',
+        currencyName: 'Indonesian Rupiah',
+        locale: 'id-ID',
+        presets: [
+            { name: '🏝️ Bali (Canggu)', amount: 25000000 },
+            { name: '🏙️ Jakarta', amount: 20000000 },
+            { name: '🌋 Yogyakarta', amount: 12000000 },
+            { name: '🌿 Lombok/Rural', amount: 10000000 }
+        ],
+        fallbackRate: { USD: 15700, EUR: 17000, GBP: 19800, AUD: 10300, CAD: 11500, RON: 3400 }
+    },
+    JP: {
+        name: 'Japan',
+        flag: '🇯🇵',
+        currency: 'JPY',
+        currencyName: 'Japanese Yen',
+        locale: 'ja-JP',
+        presets: [
+            { name: '🗼 Tokyo', amount: 350000 },
+            { name: '🏯 Osaka', amount: 280000 },
+            { name: '🌸 Fukuoka', amount: 220000 },
+            { name: '🏔️ Rural Japan', amount: 180000 }
+        ],
+        fallbackRate: { USD: 149, EUR: 162, GBP: 188, AUD: 98, CAD: 109, RON: 32 }
+    },
+    KR: {
+        name: 'South Korea',
+        flag: '🇰🇷',
+        currency: 'KRW',
+        currencyName: 'Korean Won',
+        locale: 'ko-KR',
+        presets: [
+            { name: '🏙️ Seoul (Gangnam)', amount: 3500000 },
+            { name: '🌆 Seoul (Standard)', amount: 2500000 },
+            { name: '🏖️ Busan', amount: 2000000 },
+            { name: '🌿 Jeju/Rural', amount: 1800000 }
+        ],
+        fallbackRate: { USD: 1320, EUR: 1430, GBP: 1670, AUD: 870, CAD: 970, RON: 285 }
     }
-  }
+};
 
-  function convertToVND(amount, rate) {
-    const n = Number(amount);
-    const r = Number(rate);
-    if (!isFinite(n) || !isFinite(r)) return 0;
-    return Math.round(n * r);
-  }
+// Global state
+let currentCountry = 'VN';
+let currentLifestyle = 'standard';
 
-  function calculateLongevity(budgetVND, monthlyExpenseVND) {
-    // budgetVND and monthlyExpenseVND should be integer amounts in VND
-    const budget = Number(budgetVND);
-    const monthly = Number(monthlyExpenseVND);
-    if (!isFinite(budget) || !isFinite(monthly) || monthly <= 0) {
-      return { months: 0, years: 0, remainderVND: budget, daysApprox: 0 };
-    }
-    const monthsFloat = budget / monthly;
-    const months = Math.floor(monthsFloat);
-    const years = Math.floor(months / 12);
-    const remainderVND = Math.round(budget - months * monthly);
-    const dailyExpense = monthly / 30; // rough
-    const daysApprox = Math.floor(remainderVND / (dailyExpense || 1));
-    return { months, years, remainderVND, daysApprox };
-  }
+const NomadFlow = (function () {
+    const API_BASE = 'https://api.exchangerate.host/latest';
 
-  function formatVND(amount) {
-    const n = Number(amount) || 0;
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
-  }
-
-  // Optional helper to wire a basic UI if the developer used these IDs.
-  // Elements (optional):
-  //  - #currencySelect (select with currency codes)
-  //  - #rateInput (input where user can override rate)
-  //  - #amountInput (amount in foreign currency)
-  //  - #convertBtn (button to convert)
-  //  - #vndResult (element to show converted VND)
-  //  - #budgetInput (initial budget in foreign currency or VND)
-  //  - #monthlyInput (monthly expense in VND)
-  //  - #longevityResult (element to show months/years)
-  function attachBudgetUI(opts = {}) {
-    // find elements
-    const qs = (sel) => document.querySelector(sel);
-    const currencySelect = qs(opts.currencySelect || '#currencySelect');
-    const rateInput = qs(opts.rateInput || '#rateInput');
-    const amountInput = qs(opts.amountInput || '#amountInput');
-    const convertBtn = qs(opts.convertBtn || '#convertBtn');
-    const vndResult = qs(opts.vndResult || '#vndResult');
-
-    const budgetInput = qs(opts.budgetInput || '#budgetInput');
-    const monthlyInput = qs(opts.monthlyInput || '#monthlyInput');
-    const longevityResult = qs(opts.longevityResult || '#longevityResult');
-
-    async function doConvert() {
-      if (!amountInput) return;
-      const amount = Number(amountInput.value || 0);
-      const currency = (currencySelect && currencySelect.value) || 'USD';
-      let rate = rateInput ? Number(rateInput.value) : NaN;
-      if (!isFinite(rate) || rate <= 0) {
-        rate = await fetchExchangeRate(currency);
-        if (rateInput) rateInput.value = Math.round(rate);
-      }
-      const vnd = convertToVND(amount, rate);
-      if (vndResult) vndResult.textContent = formatVND(vnd);
-      return vnd;
-    }
-
-    async function doLongevity() {
-      if (!budgetInput || !monthlyInput || !longevityResult) return;
-      // Accept budget either as VND (if has trailing 'VND') or number in selected currency
-      const budgetRaw = budgetInput.value || '';
-      const monthlyRaw = monthlyInput.value || '';
-
-      // parse monthly in VND
-      const monthlyVND = Number(monthlyRaw.replace(/[\D]/g, '')) || Number(monthlyRaw) || 0;
-
-      // detect if budget appears to be VND (contains non-digit) otherwise treat as foreign currency
-      const hasNonDigits = /[^0-9.,]/.test(budgetRaw);
-      let budgetVND = Number(budgetRaw.replace(/[^0-9.-]/g, '')) || 0;
-      if (!hasNonDigits && (opts.treatBudgetAsForeign || !opts.budgetIsVND)) {
-        // treat as foreign currency -> convert using selected currency
-        const currency = (currencySelect && currencySelect.value) || 'USD';
-        let rate = rateInput ? Number(rateInput.value) : NaN;
-        if (!isFinite(rate) || rate <= 0) {
-          rate = await fetchExchangeRate(currency);
+    // Fetch exchange rate from user's currency to destination country's currency
+    async function fetchExchangeRate(fromCurrency, toCurrency) {
+        try {
+            const url = `${API_BASE}?base=${encodeURIComponent(fromCurrency)}&symbols=${encodeURIComponent(toCurrency)}`;
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('Network error');
+            const data = await resp.json();
+            if (data && data.rates && typeof data.rates[toCurrency] === 'number') {
+                return data.rates[toCurrency];
+            }
+            throw new Error('Invalid response');
+        } catch (err) {
+            // Use fallback rates
+            const config = COUNTRY_CONFIG[currentCountry];
+            return config.fallbackRate[fromCurrency.toUpperCase()] || config.fallbackRate.USD;
         }
-        budgetVND = convertToVND(Number(budgetRaw), rate);
-      }
-
-      const res = calculateLongevity(budgetVND, monthlyVND);
-      longevityResult.innerHTML = `Estimated: <strong>${res.months} months</strong> (~${res.years} years) <br> Remainder: ${formatVND(res.remainderVND)} (~${res.daysApprox} days at current monthly burn)`;
-      return res;
     }
 
-    if (convertBtn) convertBtn.addEventListener('click', (e) => { e.preventDefault(); doConvert(); });
-    if (amountInput) amountInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doConvert(); });
+    // Convert amount using rate
+    function convertAmount(amount, rate) {
+        const n = Number(amount);
+        const r = Number(rate);
+        if (!isFinite(n) || !isFinite(r)) return 0;
+        return Math.round(n * r);
+    }
 
-    // longevity bindings
-    if (budgetInput) budgetInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLongevity(); });
-    if (monthlyInput) monthlyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLongevity(); });
+    // Calculate longevity
+    function calculateLongevity(budgetLocal, monthlyExpense) {
+        const budget = Number(budgetLocal);
+        const monthly = Number(monthlyExpense);
+        if (!isFinite(budget) || !isFinite(monthly) || monthly <= 0) {
+            return { months: 0, years: 0, remainder: budget, daysApprox: 0 };
+        }
+        const monthsFloat = budget / monthly;
+        const months = Math.floor(monthsFloat);
+        const years = Math.floor(months / 12);
+        const remainder = Math.round(budget - months * monthly);
+        const dailyExpense = monthly / 30;
+        const daysApprox = Math.floor(remainder / (dailyExpense || 1));
+        return { months, years, remainder, daysApprox };
+    }
 
-    // expose small interface
-    return { doConvert, doLongevity };
-  }
+    // Format currency based on country config
+    function formatCurrency(amount, countryCode) {
+        const config = COUNTRY_CONFIG[countryCode];
+        const n = Number(amount) || 0;
+        try {
+            return new Intl.NumberFormat(config.locale, { 
+                style: 'currency', 
+                currency: config.currency,
+                maximumFractionDigits: 0
+            }).format(n);
+        } catch {
+            return `${config.currency} ${n.toLocaleString()}`;
+        }
+    }
 
-  return {
-    fetchExchangeRate,
-    convertToVND,
-    calculateLongevity,
-    formatVND,
-    attachBudgetUI,
-  };
+    // Get lifestyle amount for current country
+    function getLifestyleAmount(countryCode, lifestyle) {
+        return LIFESTYLE_MATRIX[countryCode]?.[lifestyle] || LIFESTYLE_MATRIX[countryCode]?.standard || 0;
+    }
+
+    return {
+        fetchExchangeRate,
+        convertAmount,
+        calculateLongevity,
+        formatCurrency,
+        getLifestyleAmount
+    };
 })();
 
-// Expose globally for debugging/console use
-window.BudgetUtils = BudgetUtils;
+// Expose globally
+window.NomadFlow = NomadFlow;
 
-// Auto-attach UI logic customized for NomadFlow
+// UI Logic
 document.addEventListener('DOMContentLoaded', () => {
-    const ui = BudgetUtils.attachBudgetUI({
-      convertBtn: '#convertBtn'
-    });
+    const countrySelect = document.getElementById('countrySelect');
+    const currencySelect = document.getElementById('currencySelect');
+    const amountInput = document.getElementById('amountInput');
+    const monthlyInput = document.getElementById('monthlyInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const rateInput = document.getElementById('rateInput');
+    const presetContainer = document.getElementById('presetContainer');
+    const localResult = document.getElementById('localResult');
+    const longevityResult = document.getElementById('longevityResult');
+    const fill = document.getElementById('fill');
+    const equivalentLabel = document.getElementById('equivalentLabel');
+    const monthlyLabel = document.getElementById('monthlyLabel');
+    const monthlyHint = document.getElementById('monthlyHint');
+    const headerSubtitle = document.getElementById('headerSubtitle');
+    const lifestyleControl = document.getElementById('lifestyleControl');
+    const lifestyleBtns = lifestyleControl?.querySelectorAll('.segment-btn');
 
-    const btn = document.querySelector('#convertBtn');
-    if (btn) {
-        btn.addEventListener('click', async () => {
-            // 1. Convert savings to VND
-            const vndAmount = await ui.doConvert();
+    // Update monthly input based on lifestyle
+    function updateMonthlyFromLifestyle() {
+        const amount = NomadFlow.getLifestyleAmount(currentCountry, currentLifestyle);
+        monthlyInput.value = amount;
+        
+        // Auto-calculate if savings entered
+        if (amountInput.value) {
+            runCalculation();
+        }
+    }
 
-            // 2. Calculate longevity using converted VND amount
-            const monthlyInput = document.querySelector('#monthlyInput');
-            const longevityResult = document.querySelector('#longevityResult');
-            const fill = document.querySelector('#fill');
+    // Update UI for selected country
+    function updateCountryUI() {
+        const config = COUNTRY_CONFIG[currentCountry];
+        
+        // Update header
+        headerSubtitle.textContent = `Calculate your freedom in ${config.name} ${config.flag}`;
+        
+        // Update labels
+        equivalentLabel.textContent = `${config.currency} Equivalent`;
+        monthlyLabel.textContent = `Est. Monthly Spending (${config.currency})`;
+        monthlyHint.textContent = `Enter amount in ${config.currencyName}`;
+        
+        // Clear rate cache
+        if (rateInput) rateInput.value = '';
+        
+        // Reset results
+        localResult.textContent = '0';
+        longevityResult.innerHTML = '---';
+        fill.style.width = '0%';
+        
+        // Update presets
+        renderPresets();
+        
+        // Reset lifestyle to standard and update monthly
+        currentLifestyle = 'standard';
+        lifestyleBtns?.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.lifestyle === 'standard');
+        });
+        updateMonthlyFromLifestyle();
+    }
 
-            const monthlyVND = Number((monthlyInput?.value || '').replace(/[^0-9]/g, '')) || 0;
+    // Render preset buttons for current country
+    function renderPresets() {
+        const config = COUNTRY_CONFIG[currentCountry];
+        presetContainer.innerHTML = '';
+        
+        config.presets.forEach(preset => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'preset-tag';
+            btn.dataset.amount = preset.amount;
+            btn.textContent = preset.name;
+            presetContainer.appendChild(btn);
+        });
+        
+        // Re-attach preset click handlers
+        attachPresetHandlers();
+    }
 
-            // Validation: if monthly is 0 or empty, show ---
-            if (monthlyVND <= 0 || !vndAmount) {
-                if (longevityResult) longevityResult.innerHTML = '---';
-                if (fill) {
-                    fill.style.width = '0%';
-                    fill.style.background = '#ff3b30';
+    // Attach click handlers to preset buttons
+    function attachPresetHandlers() {
+        const presetTags = document.querySelectorAll('.preset-tag');
+        
+        presetTags.forEach(tag => {
+            tag.addEventListener('click', () => {
+                // Remove active from all presets
+                presetTags.forEach(t => t.classList.remove('active'));
+                // Add to clicked
+                tag.classList.add('active');
+                
+                // Clear lifestyle active state (manual override)
+                lifestyleBtns?.forEach(btn => btn.classList.remove('active'));
+                
+                // Fill monthly input
+                const amount = tag.dataset.amount;
+                if (amount) {
+                    monthlyInput.value = amount;
+                    
+                    // Auto-calculate if savings entered
+                    if (amountInput.value) {
+                        runCalculation();
+                    }
                 }
-                return;
-            }
-
-            // Calculate longevity
-            const res = BudgetUtils.calculateLongevity(vndAmount, monthlyVND);
-
-            // Update longevity result
-            if (longevityResult) {
-                longevityResult.innerHTML = `Estimated: <strong>${res.months} months</strong> (~${res.years} years)<br>Remainder: ${BudgetUtils.formatVND(res.remainderVND)} (~${res.daysApprox} days)`;
-            }
-
-            // 3. Animate progress bar (6 months = 100% safe)
-            if (fill) {
-                const safetyScore = Math.min((res.months / 6) * 100, 100);
-                fill.style.width = safetyScore + '%';
-
-                if (safetyScore >= 100) fill.style.background = '#34c759'; // Green
-                else if (safetyScore >= 50) fill.style.background = '#ffcc00'; // Yellow
-                else fill.style.background = '#ff3b30'; // Red
-            }
+            });
         });
     }
 
-    // Regional Preset Tags - auto-fill monthly spending and trigger calculation
-    const presetTags = document.querySelectorAll('.preset-tag');
-    const monthlyInput = document.querySelector('#monthlyInput');
+    // Main calculation
+    async function runCalculation() {
+        const config = COUNTRY_CONFIG[currentCountry];
+        const fromCurrency = currencySelect.value;
+        const toCurrency = config.currency;
+        const amount = Number(amountInput.value) || 0;
+        const monthlyExpense = Number((monthlyInput.value || '').replace(/[^0-9]/g, '')) || 0;
 
-    presetTags.forEach(tag => {
-        tag.addEventListener('click', () => {
-            // Remove active class from all tags
-            presetTags.forEach(t => t.classList.remove('active'));
-            // Add active to clicked tag
-            tag.classList.add('active');
+        // Get exchange rate
+        let rate = Number(rateInput.value);
+        if (!isFinite(rate) || rate <= 0) {
+            rate = await NomadFlow.fetchExchangeRate(fromCurrency, toCurrency);
+            rateInput.value = rate;
+        }
 
-            // Fill the monthly input with preset value
-            const amount = tag.dataset.amount;
-            if (monthlyInput && amount) {
-                monthlyInput.value = amount;
-                
-                // Auto-trigger calculation if savings input has a value
-                const amountInput = document.querySelector('#amountInput');
-                if (amountInput && amountInput.value && btn) {
-                    btn.click();
-                }
-            }
+        // Convert to local currency
+        const localAmount = NomadFlow.convertAmount(amount, rate);
+        localResult.textContent = NomadFlow.formatCurrency(localAmount, currentCountry);
+
+        // Validation
+        if (monthlyExpense <= 0 || localAmount <= 0) {
+            longevityResult.innerHTML = '---';
+            fill.style.width = '0%';
+            fill.style.background = '#ff3b30';
+            return;
+        }
+
+        // Calculate longevity
+        const res = NomadFlow.calculateLongevity(localAmount, monthlyExpense);
+
+        // Update longevity result
+        longevityResult.innerHTML = `Estimated: <strong>${res.months} months</strong> (~${res.years} years)<br>Remainder: ${NomadFlow.formatCurrency(res.remainder, currentCountry)} (~${res.daysApprox} days)`;
+
+        // Animate progress bar (6 months = 100% safe)
+        const safetyScore = Math.min((res.months / 6) * 100, 100);
+        fill.style.width = safetyScore + '%';
+
+        if (safetyScore >= 100) fill.style.background = '#34c759';
+        else if (safetyScore >= 50) fill.style.background = '#ffcc00';
+        else fill.style.background = '#ff3b30';
+    }
+
+    // Event listeners
+    countrySelect.addEventListener('change', () => {
+        currentCountry = countrySelect.value;
+        updateCountryUI();
+    });
+
+    convertBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        runCalculation();
+    });
+
+    // Clear rate when currency changes (to force re-fetch)
+    currencySelect.addEventListener('change', () => {
+        rateInput.value = '';
+    });
+
+    // Lifestyle toggle handlers
+    lifestyleBtns?.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Update active state
+            lifestyleBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Clear preset active state
+            document.querySelectorAll('.preset-tag').forEach(t => t.classList.remove('active'));
+            
+            // Update lifestyle and monthly
+            currentLifestyle = btn.dataset.lifestyle;
+            updateMonthlyFromLifestyle();
         });
     });
+
+    // Initialize UI
+    currentCountry = countrySelect.value;
+    updateCountryUI();
 });
